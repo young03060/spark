@@ -24,10 +24,13 @@ static rt_bool_t   g_active  = RT_FALSE;
 static rt_bool_t   g_buzzer_done = RT_FALSE;
 static rt_tick_t   g_buzzer_start = 0;
 
+/* 运行时 PM2.5 报警阈值，可通过云下行 alarm_th 修改 */
+static int g_pm_threshold = ALARM_PM25_THRESHOLD;
+
 static rt_bool_t check_alarm(struct env_sensor_data *d)
 {
     if (d->temp_valid && d->temperature > ALARM_TEMP_THRESHOLD) return RT_TRUE;
-    if (d->pm_valid && d->pm2_5 > ALARM_PM25_THRESHOLD) return RT_TRUE;
+    if (d->pm_valid && d->pm2_5 > g_pm_threshold) return RT_TRUE;
     return RT_FALSE;
 }
 
@@ -37,7 +40,7 @@ static void alarm_thread(void *parameter)
     rt_bool_t first = RT_TRUE;
 
     rt_kprintf("[alarm] Buzzer alarm started (T>%dC or PM2.5>%d)\n",
-               (int)ALARM_TEMP_THRESHOLD, ALARM_PM25_THRESHOLD);
+               (int)ALARM_TEMP_THRESHOLD, g_pm_threshold);
 
     rt_pin_mode(BUZZER_PIN, PIN_MODE_OUTPUT);
     rt_pin_write(BUZZER_PIN, PIN_LOW);
@@ -121,6 +124,19 @@ void alarm_task_deinit(void)
 }
 
 rt_bool_t alarm_is_active(void) { return g_active; }
+
+void alarm_set_pm_threshold(int pm)
+{
+    if (pm < 0)   pm = 0;
+    if (pm > 100) pm = 100;
+    g_pm_threshold = pm;
+    rt_kprintf("[alarm] PM2.5 threshold set to %d ug/m3\n", g_pm_threshold);
+}
+
+int alarm_get_pm_threshold(void)
+{
+    return g_pm_threshold;
+}
 
 #ifdef RT_USING_FINSH
 #include <finsh.h>

@@ -13,7 +13,9 @@
 build
 Debug
 documentation/html
-packages/
+packages/*
+!packages/SConscript
+!packages/pkgs.json
 *~
 *.o
 *.obj
@@ -43,3 +45,11 @@ cconfig.h
 # libraries and rt-thread are included for standalone build
 # libraries
 # rt-thread
+
+# Local credentials and developer-specific settings
+applications/cloud_config.h
+miniprogram/utils/onenet.config.js
+miniprogram/project.private.config.json
+.env
+.env.*
+__pycache__/

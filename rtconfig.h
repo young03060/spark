@@ -103,6 +103,31 @@
 #define RT_USING_SPI
 #define RT_USING_SENSOR
 #define RT_USING_SENSOR_CMD
+#define RT_USING_WIFI
+#define RT_WLAN_DEVICE_STA_NAME "wlan0"
+#define RT_WLAN_DEVICE_AP_NAME "wlan1"
+#define RT_WLAN_SSID_MAX_LENGTH 32
+#define RT_WLAN_PASSWORD_MAX_LENGTH 32
+#define RT_WLAN_DEV_EVENT_NUM 2
+#define RT_WLAN_MANAGE_ENABLE
+#define RT_WLAN_SCAN_WAIT_MS 10000
+#define RT_WLAN_CONNECT_WAIT_MS 10000
+#define RT_WLAN_SCAN_SORT
+#define RT_WLAN_MSH_CMD_ENABLE
+#define RT_WLAN_AUTO_CONNECT_ENABLE
+#define AUTO_CONNECTION_PERIOD_MS 2000
+#define RT_WLAN_CFG_ENABLE
+#define RT_WLAN_CFG_INFO_MAX 3
+#define RT_WLAN_PROT_ENABLE
+#define RT_WLAN_PROT_NAME_LEN 8
+#define RT_WLAN_PROT_MAX 2
+#define RT_WLAN_DEFAULT_PROT "lwip"
+#define RT_WLAN_PROT_LWIP_ENABLE
+#define RT_WLAN_PROT_LWIP_NAME "lwip"
+#define RT_WLAN_WORK_THREAD_ENABLE
+#define RT_WLAN_WORKQUEUE_THREAD_NAME "wlan"
+#define RT_WLAN_WORKQUEUE_THREAD_SIZE 2048
+#define RT_WLAN_WORKQUEUE_THREAD_PRIO 15
 
 /* Using USB */
 
@@ -141,6 +166,7 @@
 /* Docking with protocol stacks */
 
 #define SAL_USING_LWIP
+/* SAL_USING_AT disabled: no AT device in use */
 /* end of Docking with protocol stacks */
 #define SAL_USING_POSIX
 #define RT_USING_NETDEV
@@ -162,10 +188,12 @@
 #define IP_SOF_BROADCAST_RECV 1
 
 /* Static IPv4 Address */
-
-#define RT_LWIP_IPADDR "192.168.1.30"
-#define RT_LWIP_GWADDR "192.168.1.1"
-#define RT_LWIP_MSKADDR "255.255.255.0"
+/* DHCP is enabled (RT_LWIP_DHCP), so the static IP below is unused dead code
+ * (it only compiles under `#if !LWIP_DHCP`). It was a leftover from the W5500
+ * ethernet setup and is now removed. */
+//#define RT_LWIP_IPADDR "192.168.1.30"
+//#define RT_LWIP_GWADDR "192.168.1.1"
+//#define RT_LWIP_MSKADDR "255.255.255.0"
 /* end of Static IPv4 Address */
 #define RT_LWIP_UDP
 #define RT_LWIP_TCP
@@ -193,16 +221,45 @@
 #define LWIP_SO_LINGER 0
 #define LWIP_NETIF_LOOPBACK 0
 #define RT_LWIP_USING_PING
+/* AT component disabled: using native SPI RW007 WiFi instead */
+//#define RT_USING_AT
+//#define AT_USING_CLIENT
+//#define AT_CLIENT_NUM_MAX 1
+//#define AT_USING_SOCKET
+//#define AT_USING_CLI
+//#define AT_CMD_MAX_LEN 128
+//#define AT_SW_VERSION_NUM 0x10301
 /* end of Network */
 
 /* Utilities */
 
+#define RT_USING_ULOG
+#define ULOG_OUTPUT_LVL_D
+#define ULOG_OUTPUT_LVL 7
+#define ULOG_ASSERT_ENABLE
+#define ULOG_LINE_BUF_SIZE 128
+
+/* log format */
+
+#define ULOG_USING_COLOR
+#define ULOG_OUTPUT_TIME
+#define ULOG_OUTPUT_LEVEL
+#define ULOG_OUTPUT_TAG
+/* end of log format */
+#define ULOG_BACKEND_USING_CONSOLE
 /* end of Utilities */
 /* end of RT-Thread Components */
 
 /* RT-Thread online packages */
 
 /* IoT - internet of things */
+
+#define PKG_USING_PAHOMQTT
+#define PAHOMQTT_PIPE_MODE
+#define RT_PKG_MQTT_THREAD_STACK_SIZE 4096
+#define PKG_PAHOMQTT_SUBSCRIBE_HANDLERS 1
+#define MQTT_DEBUG
+#define PKG_USING_PAHOMQTT_LATEST
 
 /* Wi-Fi */
 
@@ -213,6 +270,16 @@
 /* Wiced WiFi */
 
 /* end of Wiced WiFi */
+#define PKG_USING_RW007
+#define PKG_USING_RW007_V201
+#define RW007_USING_STM32_DRIVERS
+#define RW007_SPI_MAX_HZ 5000000
+#define RW007_SPI_BUS_NAME "spi2"
+#define RW007_CS_PIN 90
+#define RW007_BOOT0_PIN 29
+#define RW007_BOOT1_PIN 90
+#define RW007_INT_BUSY_PIN 107
+#define RW007_RST_PIN 111
 
 /* CYW43012 WiFi */
 
@@ -226,10 +293,18 @@
 
 /* end of CYW43439 WiFi */
 /* end of Wi-Fi */
+/* AT_DEVICE disabled: using native SPI RW007 driver instead */
 
 /* IoT Cloud */
 
+#define PKG_USING_ONENET
+#define ONENET_USING_MQTT
+#define ONENET_INFO_DEVID "dw"
+#define ONENET_INFO_AUTH "YOUR_ONENET_AUTH"
+#define ONENET_INFO_PROID "YOUR_PRODUCT_ID"
+#define PKG_USING_ONENET_LATEST_VERSION
 /* end of IoT Cloud */
+/* W5500 disabled: using RW007 WiFi instead. PG11 (RW007 INT) conflicts with ETH_TX_EN */
 /* end of IoT - internet of things */
 
 /* security packages */
@@ -240,6 +315,8 @@
 
 /* JSON: JavaScript Object Notation, a lightweight data-interchange format */
 
+#define PKG_USING_CJSON
+#define PKG_USING_CJSON_V1717
 /* end of JSON: JavaScript Object Notation, a lightweight data-interchange format */
 
 /* XML: Extensible Markup Language */
@@ -338,24 +415,25 @@
 /* NOVOSNS Drivers */
 
 /* end of NOVOSNS Drivers */
+
+/* N32 Drivers */
+
+/* end of N32 Drivers */
 /* end of HAL & SDK Drivers */
 
 /* sensors drivers */
 
 #define PKG_USING_AP3216C
 #define PKG_USING_AP3216C_V200
-/* PMSxx package disabled: using raw PMS5003 parser in sensor_task.c */
-/* #define PKG_USING_PMSXX */
-/* #define PKG_USING_PMSXX_BASIC */
-/* #define PKG_USING_PMSXX_SEND_WAIT_TIME 2000 */
-/* #define PKG_USING_PMSXX_INIT_ASYN */
-/* #define PKG_USING_PMSXX_DEBUG */
-/* #define PKG_USING_PMSXX_DEBUG_SHOW_CMD */
-/* #define PKG_USING_PMSXX_DEBUG_SHOW_RESP */
-/* #define PKG_USING_PMSXX_DEBUG_DUMP_RESP */
-/* #define PKG_USING_PMSXX_SAMPLE */
-/* #define PKG_USING_PMSXX_SAMPLE_UART "uart2" */
-/* #define PKG_USING_PMSXX_LATEST_VERSION */
+#define PKG_USING_PMSXX
+#define PKG_USING_PMSXX_BASIC
+#define PKG_USING_PMSXX_SEND_WAIT_TIME 2000
+#define PKG_USING_PMSXX_INIT_ASYN
+#define PKG_USING_PMSXX_DEBUG
+#define PKG_USING_PMSXX_DEBUG_SHOW_CMD
+#define PKG_USING_PMSXX_DEBUG_SHOW_RESP
+#define PKG_USING_PMSXX_DEBUG_DUMP_RESP
+#define PKG_USING_PMSXX_LATEST_VERSION
 #define PKG_USING_ICM20608
 #define PKG_USING_ICM20608_LATEST_VERSION
 /* end of sensors drivers */
@@ -445,11 +523,15 @@
 
 #define BSP_USING_USB_TO_USART
 #define BSP_USING_COM2
+#define BSP_USING_COM3
 #define BSP_USING_ONBOARD_LCD
 #define BSP_USING_ONBOARD_LCD_PWM_BL
 #define BSP_USING_ONBOARD_LCD_TEST
 #define BSP_USING_AP3216C
 #define BSP_USING_ICM20608
+#define BSP_USING_LED_MATRIX
+#define BSP_USING_ONBOARD_LED_MATRIX
+#define BSP_ONBOAR_LED_NUMS 19
 /* end of Onboard Peripheral Drivers */
 
 /* On-chip Peripheral Drivers */
@@ -458,6 +540,9 @@
 #define BSP_USING_UART
 #define BSP_USING_UART1
 #define BSP_USING_UART2
+#define BSP_USING_UART3
+#define BSP_USING_ONCHIP_RTC
+#define BSP_RTC_USING_LSE
 #define BSP_USING_PWM
 #define BSP_USING_PWM3
 #define BSP_USING_PWM3_CH2

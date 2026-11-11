@@ -1,0 +1,52 @@
+[
+  {
+    "path": "/packages/iot/pahomqtt",
+    "ver": "latest",
+    "name": "PAHOMQTT"
+  },
+  {
+    "path": "/packages/iot/at_device",
+    "ver": "latest",
+    "name": "AT_DEVICE"
+  },
+  {
+    "path": "/packages/iot/iot_cloud/onenet",
+    "ver": "latest",
+    "name": "ONENET"
+  },
+  {
+    "path": "/packages/iot/RyanW5500",
+    "ver": "latest",
+    "name": "RYANW5500"
+  },
+  {
+    "path": "/packages/language/JSON/cJSON",
+    "ver": "v1.7.17",
+    "name": "CJSON"
+  },
+  {
+    "path": "/packages/system/perf_counter",
+    "ver": "v2.2.4.1",
+    "name": "PERF_COUNTER"
+  },
+  {
+    "path": "/packages/peripherals/sensors/ap3216c",
+    "ver": "v2.0.0",
+    "name": "AP3216C"
+  },
+  {
+    "path": "/packages/peripherals/sensors/pmsxx",
+    "ver": "latest",
+    "name": "PMSXX"
+  },
+  {
+    "path": "/packages/peripherals/sensors/icm20608",
+    "ver": "latest",
+    "name": "ICM20608"
+  },
+  {
+    "path": "/packages/iot/WiFi/rw007",
+    "ver": "v2.0.1",
+    "name": "RW007"
+  }
+]

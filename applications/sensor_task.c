@@ -7,6 +7,7 @@
 
 #include "sensor_task.h"
 #include <rtdevice.h>
+#include <board.h>
 #include <string.h>
 
 #define DBG_TAG    "sensor"
@@ -87,6 +88,9 @@ static rt_uint8_t  pms_rx_buf[PMS_FRAME_LEN * 2];
 static rt_uint8_t  pms_frame[PMS_FRAME_LEN];
 static rt_uint32_t pms_frame_count = 0;
 static rt_uint32_t pms_err_count   = 0;
+static rt_uint32_t pms_rx_byte_count = 0;    /* total bytes received from UART2 */
+static rt_tick_t   pms_last_data_tick = 0;   /* last time valid frame received */
+#define PMS_DATA_TIMEOUT_MS  10000            /* warn if no PM data for 10 seconds */
 
 static void pms_uart_init(void)
 {
@@ -98,19 +102,41 @@ static void pms_uart_init(void)
         return;
     }
 
-    /* Open raw UART2 for reading (PMS5003 sends 32-byte frames at 9600 baud) */
-    struct serial_configure cfg = RT_SERIAL_CONFIG_DEFAULT;
-    cfg.baud_rate = BAUD_RATE_9600;
-    cfg.bufsz     = 128;
-    rt_device_control(pms_uart_dev, RT_DEVICE_CTRL_CONFIG, &cfg);
-
+    /* STEP 1: Open device FIRST (enables clocks + GPIO via HAL_UART_MspInit) */
     if (rt_device_open(pms_uart_dev, RT_DEVICE_FLAG_RDONLY | RT_DEVICE_FLAG_INT_RX) != RT_EOK) {
         LOG_E("PMS: failed to open uart2");
         pms_uart_dev = RT_NULL;
         return;
     }
 
-    LOG_I("PMS: raw UART2 reader started @ 9600");
+    /* STEP 2: THEN configure baud rate (device must be open for config to apply) */
+    struct serial_configure cfg = RT_SERIAL_CONFIG_DEFAULT;
+    cfg.baud_rate = BAUD_RATE_9600;
+    /* NOTE: do NOT change cfg.bufsz — if it differs from the driver's default
+     * (RT_SERIAL_RB_BUFSZ=64) while the device is already open, rt_serial_control
+     * rejects RT_DEVICE_CTRL_CONFIG with RT_EBUSY and the baud rate never applies. */
+    {
+        rt_err_t ctl_ret = rt_device_control(pms_uart_dev, RT_DEVICE_CTRL_CONFIG, &cfg);
+        if (ctl_ret != RT_EOK)
+            LOG_E("PMS: UART2 baud config failed (ret=%d)", ctl_ret);
+    }
+
+    pms_last_data_tick = rt_tick_get();
+    LOG_I("PMS: raw UART2 reader started @ 9600 baud");
+}
+
+/**
+ * Re-initialize UART2 for PMS5003 (called on data timeout)
+ */
+static void pms_uart_reinit(void)
+{
+    if (pms_uart_dev != RT_NULL) {
+        rt_device_close(pms_uart_dev);
+        pms_uart_dev = RT_NULL;
+        LOG_W("PMS: UART2 closed for re-init");
+    }
+    rt_thread_mdelay(100);
+    pms_uart_init();
 }
 
 static rt_bool_t pms_parse_frame(struct env_sensor_data *data)
@@ -118,6 +144,7 @@ static rt_bool_t pms_parse_frame(struct env_sensor_data *data)
     /* Read whatever is available from UART2 */
     int len = rt_device_read(pms_uart_dev, 0, pms_rx_buf, sizeof(pms_rx_buf));
     if (len <= 0) return RT_FALSE;
+    pms_rx_byte_count += len;
 
     rt_bool_t updated = RT_FALSE;
 
@@ -171,6 +198,7 @@ static rt_bool_t pms_parse_frame(struct env_sensor_data *data)
         data->quality  = get_quality(data->pm2_5);
 
         pms_frame_count++;
+        pms_last_data_tick = rt_tick_get();
         updated = RT_TRUE;
 
         LOG_D("PMS: PM1.0=%d PM2.5=%d PM10=%d | "
@@ -185,6 +213,22 @@ static rt_bool_t pms_parse_frame(struct env_sensor_data *data)
 
 static rt_bool_t read_pms_from_sensor(struct env_sensor_data *data)
 {
+    /* If UART2 is not open, try to re-init */
+    if (pms_uart_dev == RT_NULL) {
+        LOG_W("PMS: UART2 not open, attempting re-init...");
+        pms_uart_reinit();
+        return RT_FALSE;
+    }
+
+    /* If no data received for >10 seconds, try re-init */
+    if (pms_last_data_tick > 0 &&
+        rt_tick_get() - pms_last_data_tick > rt_tick_from_millisecond(PMS_DATA_TIMEOUT_MS)) {
+        LOG_W("PMS: No data for %lu ms, re-initializing UART2...",
+              (unsigned long)rt_tick_from_millisecond(PMS_DATA_TIMEOUT_MS) / RT_TICK_PER_SECOND * 1000);
+        pms_uart_reinit();
+        return RT_FALSE;
+    }
+
     return pms_parse_frame(data);
 }
 
@@ -417,6 +461,21 @@ static void sensor_thread_entry(void *parameter)
         data.pm_valid = RT_FALSE;
         read_pms_from_sensor(&data);
 
+        /* Periodic PM data watchdog (every ~12 seconds = 6 cycles) */
+        {
+            static int pm_watchdog = 0;
+            pm_watchdog++;
+            if (pm_watchdog >= 6) {
+                pm_watchdog = 0;
+                if (!data.pm_valid) {
+                    LOG_W("PM data STALE — no valid PMS5003 frames (count=%lu err=%lu)",
+                          pms_frame_count, pms_err_count);
+                } else {
+                    LOG_D("PM OK: PM2.5=%d, frames=%lu", data.pm2_5, pms_frame_count);
+                }
+            }
+        }
+
         rt_mutex_take(g_data_mutex, RT_WAITING_FOREVER);
         rt_memcpy(&g_latest_data, &data, sizeof(struct env_sensor_data));
         rt_mutex_release(g_data_mutex);
@@ -525,6 +584,111 @@ static void cmd_aht10_test(int argc, char *argv[])
         rt_kprintf("READ FAILED (ret=%d)\n", ret);
 }
 MSH_CMD_EXPORT_ALIAS(cmd_aht10_test, aht10_test, direct AHT sensor diagnostic test);
+
+static void cmd_pms_status(int argc, char *argv[])
+{
+    rt_kprintf("\n==== PMS5003 UART2 Status ====\n");
+    rt_kprintf(" UART device: %s\n", pms_uart_dev ? "OPEN" : "CLOSED/NULL");
+    rt_kprintf(" Valid frames: %lu\n", pms_frame_count);
+    rt_kprintf(" Bad frames:   %lu\n", pms_err_count);
+    rt_kprintf(" RX bytes:     %lu\n", pms_rx_byte_count);
+    rt_kprintf(" Last 32 raw bytes:\n");
+    for (int i = 0; i < PMS_FRAME_LEN; i++) {
+        rt_kprintf("%02X ", pms_frame[i]);
+        if ((i & 0x0F) == 0x0F) rt_kprintf("\n");
+    }
+    rt_kprintf("\n");
+    if (pms_last_data_tick > 0) {
+        rt_tick_t elapsed = rt_tick_get() - pms_last_data_tick;
+        rt_kprintf(" Last data:    %lu ms ago\n",
+                   (unsigned long)elapsed * 1000 / RT_TICK_PER_SECOND);
+    } else {
+        rt_kprintf(" Last data:    never\n");
+    }
+
+    if (argc >= 2 && rt_strcmp(argv[1], "reinit") == 0) {
+        rt_kprintf("\nRe-initializing UART2...\n");
+        pms_uart_reinit();
+        rt_kprintf("Done. UART device now: %s\n",
+                   pms_uart_dev ? "OPEN" : "CLOSED/NULL");
+    }
+    rt_kprintf("==============================\n\n");
+}
+MSH_CMD_EXPORT_ALIAS(cmd_pms_status, pms_status, show PMS5003 UART2 status [reinit]);
+
+/**
+ * 波特率扫描：直接 HAL 轮询 PA3，逐个波特率尝试，找出能收到 0x42 0x4D 帧头的速率。
+ * 用于排查 PMS5003 克隆模块波特率与代码 9600 不匹配的问题。
+ */
+static void cmd_pms_scan(int argc, char *argv[])
+{
+    UART_HandleTypeDef huart2;
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    const rt_uint32_t bauds[] = {2400, 4800, 9600, 19200, 38400, 57600, 115200};
+    const char *names[] = {"2400", "4800", "9600", "19200", "38400", "57600", "115200"};
+    int n = sizeof(bauds) / sizeof(bauds[0]);
+
+    rt_kprintf("\n=== PMS5003 baud scan (direct HAL polling) ===\n");
+
+    for (int b = 0; b < n; b++)
+    {
+        /* 时钟 + GPIO: PA2/PA3 = USART2 AF7 */
+        __HAL_RCC_USART2_CLK_ENABLE();
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+        GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_PULLUP;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+        huart2.Instance = USART2;
+        huart2.Init.BaudRate = bauds[b];
+        huart2.Init.WordLength = UART_WORDLENGTH_8B;
+        huart2.Init.StopBits = UART_STOPBITS_1;
+        huart2.Init.Parity = UART_PARITY_NONE;
+        huart2.Init.Mode = UART_MODE_RX;
+        huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+        huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+        HAL_UART_Init(&huart2);
+
+        rt_uint32_t total = 0, matches = 0, errors = 0;
+        rt_uint8_t  first[8] = {0};
+        rt_uint8_t  prev = 0;
+        rt_tick_t   end = rt_tick_get() + rt_tick_from_millisecond(600);
+
+        while (rt_tick_get() < end)
+        {
+            if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE))
+            {
+                rt_uint8_t ch = (rt_uint8_t)(huart2.Instance->DR & 0xFF);
+                if (total < 8) first[total] = ch;
+                if (prev == 0x42 && ch == 0x4D) matches++;
+                prev = ch;
+                total++;
+            }
+            if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_ORE | UART_FLAG_FE | UART_FLAG_NE))
+            {
+                __HAL_UART_CLEAR_FLAG(&huart2, UART_FLAG_ORE | UART_FLAG_FE | UART_FLAG_NE);
+                errors++;
+            }
+        }
+
+        rt_kprintf("%5s baud: %4lu B  err=%lu  42-4D=%lu  first:",
+                   names[b], total, errors, matches);
+        for (rt_uint32_t i = 0; i < (total < 8 ? total : 8); i++)
+            rt_kprintf(" %02X", first[i]);
+        rt_kprintf(" %s\n", matches > 0 ? "  <<< HIT" : "");
+
+        HAL_UART_DeInit(&huart2);
+        HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2 | GPIO_PIN_3);
+    }
+
+    rt_kprintf("\nRestoring UART2 for sensor driver...\n");
+    pms_uart_reinit();
+    rt_kprintf("=== done ===\n\n");
+}
+MSH_CMD_EXPORT_ALIAS(cmd_pms_scan, pms_scan, scan PMS5003 baud rates to find frame start);
 
 static void cmd_i2c_scan(int argc, char *argv[])
 {

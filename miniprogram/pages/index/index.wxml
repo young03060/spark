@@ -1,0 +1,92 @@
+<view class="container">
+  <view class="header">
+    <view class="header-info">
+      <view class="header-title">星火一号 环境监测</view>
+      <view class="header-sub">STM32F407 · OneNET 直连</view>
+    </view>
+    <view class="status {{online === true ? 'on' : (online === false ? 'off' : 'check')}}">
+      <view class="status-dot"></view>
+      <text class="status-text">{{online === true ? '在线' : (online === false ? '离线' : '检测中')}}</text>
+    </view>
+  </view>
+
+  <view class="card comfort-card" wx:if="{{comfort}}">
+    <view class="comfort-left">
+      <view class="comfort-emoji">{{comfort.emoji}}</view>
+      <view class="comfort-meta">
+        <view class="comfort-label" style="color: {{comfort.color}};">{{comfort.label}}</view>
+        <view class="comfort-tip">{{comfort.tip}}</view>
+      </view>
+    </view>
+    <view class="comfort-right">
+      <view class="comfort-temp">{{tem}}<text class="unit">°C</text></view>
+      <view class="comfort-hum">湿度 {{hum}}%</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">实时数据</view>
+    <view class="grid">
+      <view class="grid-item">
+        <view class="value">{{tem}}<text class="unit">°C</text></view>
+        <view class="label">温度</view>
+      </view>
+      <view class="grid-item">
+        <view class="value">{{hum}}<text class="unit">%</text></view>
+        <view class="label">湿度</view>
+      </view>
+      <view class="grid-item">
+        <view class="value pm" style="color: {{pmLevel ? pmLevel.color : '#1aad19'}};">{{pm}}<text class="unit">μg/m³</text></view>
+        <view class="label">PM2.5
+          <text wx:if="{{pmLevel}}" class="aqi-badge"
+            style="background: {{pmLevel.bg}}; color: {{pmLevel.color}};">{{pmLevel.label}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="hint" wx:if="{{loading}}">连接中…</view>
+    <view class="hint err" wx:if="{{lastError}}">{{lastError}}</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">PM2.5 历史趋势</view>
+    <view class="range-bar">
+      <view wx:for="{{ranges}}" wx:key="key"
+        class="range-btn {{historyRange === item.key ? 'active' : ''}}"
+        data-range="{{item.key}}" bindtap="onRangeChange">{{item.label}}</view>
+    </view>
+    <canvas type="2d" id="pmChart" class="chart"></canvas>
+    <view class="hint" wx:if="{{historyHint}}">{{historyHint}}</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">设备控制</view>
+
+    <view class="ctrl-row">
+      <view class="ctrl-info">
+        <view class="ctrl-label">灯</view>
+        <view class="ctrl-desc">LED1 · 板载矩阵</view>
+      </view>
+      <switch checked="{{led1}}" bindchange="onLedChange" color="#1aad19" />
+    </view>
+
+    <view class="ctrl-row">
+      <view class="ctrl-info">
+        <view class="ctrl-label">蜂鸣器</view>
+        <view class="ctrl-desc">buzzer1</view>
+      </view>
+      <switch checked="{{buzzer1}}" bindchange="onBuzzerChange" color="#1aad19" />
+    </view>
+
+    <view class="ctrl-row">
+      <view class="ctrl-info">
+        <view class="ctrl-label">PM2.5 报警阈值</view>
+        <view class="ctrl-desc">alarm_th · {{alarmTh}} μg/m³</view>
+      </view>
+    </view>
+    <slider class="slider" min="0" max="100" step="1" value="{{alarmTh}}"
+      activeColor="#1aad19" block-size="20"
+      bindchanging="onAlarmChanging" bindchange="onAlarmChange" />
+  </view>
+
+  <view class="footer">数据经中国移动 OneNET 平台 · 每 3 秒刷新</view>
+</view>
